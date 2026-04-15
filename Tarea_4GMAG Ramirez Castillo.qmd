@@ -1,0 +1,1624 @@
+---
+title: "Tarea 4. Interpolación polinomial y con splines"
+author: "Mateo Ramirez Castillo"
+lang: es
+format: 
+  html:
+    grid:
+      body-width: 1200px
+---
+
+
+Importamos packages y funciones necesarias:
+
+```{python}
+#| code-fold: true
+
+import matplotlib.pyplot as plt
+import numpy as np
+import math
+from scipy.interpolate import lagrange
+from numpy.polynomial.polynomial import Polynomial
+from scipy.interpolate import CubicSpline
+from scipy.stats import chi2
+import yfinance as yf
+import pandas as pd
+
+import matplotlib.ticker as ticker
+import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+import calendar
+import statsmodels.api as sm
+import statsmodels.graphics.tsaplots as tsaplots
+import statsmodels.tsa.stattools as ts
+
+```
+
+
+::: {#exr-tarea4_1}
+Consideremos los siguientes puntos en $\mathbb{R}^2$:
+
+\begin{equation}
+\begin{array}{l|c|c|c|c|c|c} 
+\text{x} & 0 & 1 & 2 & 3 & 4 & 5\\
+\hline \text{y} & y_0 & y_1 & y_2 & y_3 & y_4 & y_5
+\end{array}
+\end{equation}
+
+a)  Encontrar y graficar los polinomios base para el polinomio de Lagrange que contiene a los puntos.
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+x0, x1, x2, x3, x4, x5 = 0, 1, 2, 3, 4, 5
+y0, y1, y2, y3, y4, y5 = 2, 3, 5, 7, 8, 9
+
+L0 = lambda x: (x-x1)*(x-x2)*(x-x3)*(x-x4)*(x-x5) / ((x0-x1)*(x0-x2)*(x0-x3)*(x0-x4)*(x0-x5))
+L1 = lambda x: (x-x0)*(x-x2)*(x-x3)*(x-x4)*(x-x5) / ((x1-x0)*(x1-x2)*(x1-x3)*(x1-x4)*(x1-x5))
+L2 = lambda x: (x-x0)*(x-x1)*(x-x3)*(x-x4)*(x-x5) / ((x2-x0)*(x2-x1)*(x2-x3)*(x2-x4)*(x2-x5))
+L3 = lambda x: (x-x0)*(x-x1)*(x-x2)*(x-x4)*(x-x5) / ((x3-x0)*(x3-x1)*(x3-x2)*(x3-x4)*(x3-x5))
+L4 = lambda x: (x-x0)*(x-x1)*(x-x2)*(x-x3)*(x-x5) / ((x4-x0)*(x4-x1)*(x4-x2)*(x4-x3)*(x4-x5))
+L5 = lambda x: (x-x0)*(x-x1)*(x-x2)*(x-x3)*(x-x4) / ((x5-x0)*(x5-x1)*(x5-x2)*(x5-x3)*(x5-x4))
+
+x = np.linspace(-0.5, 5.5, 200)
+x_ones = np.ones(6)
+x_ceros = np.zeros(6)
+
+plt.figure(figsize=(8, 6))
+plt.plot(x, L0(x), color="#125646", label="L0(x)")
+plt.plot(x, L1(x), color="#564d12", label="L1(x)")
+plt.plot(x, L2(x), color="#563712", label="L2(x)")
+plt.plot(x, L3(x), color="#2a1256", label="L3(x)")
+plt.plot(x, L4(x), color="#561226", label="L4(x)")
+plt.plot(x, L5(x), color="#125618", label="L5(x)")
+plt.scatter([x0,x1,x2,x3,x4,x5], x_ceros, color="black", s=60, zorder=5)
+plt.scatter([x0,x1,x2,x3,x4,x5], x_ones, color="#3f5612", s=80, zorder=5)
+plt.axhline(0, color="black", linewidth=0.8, linestyle="--")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.grid()
+plt.legend()
+plt.show()
+```
+
+
+b)  Calcular y graficar el polinomio de Lagrange.
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+P = lambda x: y0*L0(x) + y1*L1(x) + y2*L2(x) + y3*L3(x) + y4*L4(x) + y5*L5(x)
+
+plt.figure(figsize=(8, 6))
+plt.plot(x, P(x), color="#4b1256", label="P(x)", linewidth=2)
+plt.scatter([x0,x1,x2,x3,x4,x5], [y0,y1,y2,y3,y4,y5], color="#3f5612", s=80, zorder=5, label="Puntos de Interpolación")
+plt.axhline(0, color="black", linewidth=0.8, linestyle="--")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.grid()
+plt.legend()
+plt.show()
+```
+
+:::
+
+::: {#def-errores}
+Supongamos que $p^*$ es una aproximación de $p$. El **error real** es $p-p^*$, el **error absoluto** es $|p-p^*|$ y el error relativo es
+
+\begin{equation}
+\frac{|p-p^*|}{|p|},
+\end{equation}
+
+siempre y cuando $p\neq 0$.
+:::
+
+::: {#exr-tarea4_2}
+En cada inciso considera la función de valores reales y realiza lo siguiente:
+
+i.  Grafica los polinomios interpolantes de Lagrange con los puntos dados y aproxima el valor de la función y la derivada en el punto solicitado.
+
+ii. Grafica los splines cúbicos con frontera natural para los puntos dados y aproxima el valor de la función y la derivada en el punto solicitado.
+
+iii. Grafica los splines cúbicos con frontera condicionada para los puntos dados y aproxima el valor de la función y la derivada en el punto solicitado.
+
+En cada caso grafica el error real, el absoluto y el relativo.
+
+
+a)  $f(x)=x\,cos\,x-3x$. Puntos: $x_0=0, x_1=0.5, x_2=1, x_3=1.5$. Aproximar $f(0.8)$ y $f'(0.8)$.
+
+::: {.panel-tabset}
+
+## Lagrange
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+f = lambda x: x * np.cos(x) - 3 * x
+nodos = np.array([0, 0.5, 1, 1.5])
+values = f(nodos)
+x = np.linspace(0, 1.5, 200)
+pol_lagrange = lagrange(nodos, values)
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, pol_lagrange(x), color = "#FF5733", label = "$P(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.8, f(0.8), color='green', zorder=5, s=100, label='f(0.8)')
+plt.scatter(0.8, pol_lagrange(0.8), color='orange', zorder=5, s=100, label='P(0.8)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+
+```
+
+**Errores**
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - pol_lagrange(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - pol_lagrange(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - pol_lagrange(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+
+```
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.8): {f(0.8)}")
+print(f"Valor aproximado P(0.8): {pol_lagrange(0.8)}")
+print(f"Error real: {f(0.8) - pol_lagrange(0.8)}")
+print(f"Error absoluto: {abs(f(0.8) - pol_lagrange(0.8))}")
+print(f"Error relativo: {abs(f(0.8) - pol_lagrange(0.8)) / abs(f(0.8))}")
+```
+
+Derivada $f'(x)= \cos x - x \sin x - 3$ 
+
+```{python}
+#| code-fold: true
+
+f_prime = lambda x: np.cos(x) - x * np.sin(x) - 3
+
+print(f"Valor real f'(0.8): {f_prime(0.8)}")
+print(f"Valor aproximado P'(0.8): {pol_lagrange.deriv()(0.8)}")
+print(f"Error real: {f_prime(0.8) - pol_lagrange.deriv()(0.8)}")
+print(f"Error absoluto: {abs(f_prime(0.8) - pol_lagrange.deriv()(0.8))}")
+print(f"Error relativo: {abs(f_prime(0.8) - pol_lagrange.deriv()(0.8)) / abs(f_prime(0.8))}")
+
+
+```
+
+## Spline natural
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+cs_natural = CubicSpline(nodos, values, bc_type='natural')
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, cs_natural(x), color = "#FF5733", label = "$S(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.8, f(0.8), color='green', zorder=5, s=100, label='f(0.8)')
+plt.scatter(0.8, cs_natural(0.8), color='orange', zorder=5, s=100, label='S(0.8)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+
+```
+
+**Errores**
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - cs_natural(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - cs_natural(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - cs_natural(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+
+Valor en $x=0.8$.
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.8): {f(0.8)}")
+print(f"Valor aproximado S(0.8): {cs_natural(0.8)}")
+print(f"Error real: {f(0.8) - cs_natural(0.8)}")
+print(f"Error absoluto: {abs(f(0.8) - cs_natural(0.8))}")
+print(f"Error relativo: {abs(f(0.8) - cs_natural(0.8)) / abs(f(0.8))}")
+
+```
+
+
+Derivada en $x=0.8$.
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f'(0.8): {f_prime(0.8)}")
+print(f"Valor aproximado S'(0.8): {cs_natural.derivative()(0.8)}")
+print(f"Error real: {f_prime(0.8) - cs_natural.derivative()(0.8)}")
+print(f"Error absoluto: {abs(f_prime(0.8) - cs_natural.derivative()(0.8))}")
+print(f"Error relativo: {abs(f_prime(0.8) - cs_natural.derivative()(0.8)) / abs(f_prime(0.8))}")
+```
+
+
+## Spline condicionado
+
+En el spline condicionado, se imponen condiciones adicionales en las derivadas en los extremos. En este caso, imponemos que la derivada del spline en los extremos sea igual a la derivada de la función original en esos puntos,
+
+Derivada $f'(x)= \cos x - x \sin x - 3$
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+
+cs_condicionado = CubicSpline(nodos, values, bc_type=((1, f_prime(0)), (1, f_prime(1.5))))
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, cs_condicionado(x), color = "#FF5733", label = "$S(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.8, f(0.8), color='green', zorder=5, s=100, label='f(0.8)')
+plt.scatter(0.8, cs_condicionado(0.8), color='orange', zorder=5, s=100, label='S(0.8)')
+plt.grid(alpha = 0.3)
+plt.legend()
+```
+
+
+**Errores**
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - cs_condicionado(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Valor en $x=0.8$.
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.8): {f(0.8)}")
+print(f"Valor aproximado S(0.8): {cs_condicionado(0.8)}")
+print(f"Error real: {f(0.8) - cs_condicionado(0.8)}")
+print(f"Error absoluto: {abs(f(0.8) - cs_condicionado(0.8))}")
+print(f"Error relativo: {abs(f(0.8) - cs_condicionado(0.8)) / abs(f(0.8))}")
+```
+
+Derivada en $x=0.8$.
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+print(f"Valor real f'(0.8): {f_prime(0.8)}")
+print(f"Valor aproximado S'(0.8): {cs_condicionado.derivative()(0.8)}")
+print(f"Error real: {f_prime(0.8) - cs_condicionado.derivative()(0.8)}")
+print(f"Error absoluto: {abs(f_prime(0.8) - cs_condicionado.derivative()(0.8))}")
+print(f"Error relativo: {abs(f_prime(0.8) - cs_condicionado.derivative()(0.8)) / abs(f_prime(0.8))}")
+```
+
+:::
+
+b)  $f(x)=log(e^x+2)$. Puntos: $x_0=-2, x_1=-1, x_2=0, x_3=1, x_4=2$. Aproximar $f(0.5)$ y $f'(0.5)$.
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+f = lambda x: x * np.cos(x) - 3 * x
+nodos = np.array([0, 0.5, 1, 1.5])
+values = f(nodos)
+x = np.linspace(0, 1.5, 200)
+pol_lagrange = lagrange(nodos, values)
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, pol_lagrange(x), color = "#FF5733", label = "$P(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.8, f(0.8), color='green', zorder=5, s=100, label='f(0.8)')
+plt.scatter(0.8, pol_lagrange(0.8), color='orange', zorder=5, s=100, label='P(0.8)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+
+```
+
+Errores
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - pol_lagrange(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - pol_lagrange(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - pol_lagrange(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Aproximación de $f(0.5)$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.5): {f(0.5)}")
+print(f"Valor aproximado P(0.5): {pol_lagrange(0.5)}")
+print(f"Error real: {f(0.5) - pol_lagrange(0.5)}")
+print(f"Error absoluto: {abs(f(0.5) - pol_lagrange(0.5))}")
+print(f"Error relativo: {abs(f(0.5) - pol_lagrange(0.5)) / abs(f(0.5))}")
+```
+
+Derivada:
+
+```{python}
+#| code-fold: true
+
+f_prime = lambda x: np.exp(x) / (np.exp(x) + 2)
+
+print(f"Valor real f'(0.5): {f_prime(0.5)}")
+print(f"Valor aproximado P'(0.5): {pol_lagrange.deriv()(0.5)}")
+print(f"Error real: {f_prime(0.5) - pol_lagrange.deriv()(0.5)}")
+print(f"Error absoluto: {abs(f_prime(0.5) - pol_lagrange.deriv()(0.5))}")
+print(f"Error relativo: {abs(f_prime(0.5) - pol_lagrange.deriv()(0.5)) / abs(f_prime(0.5))}")
+```
+
+Slipe narural 
+
+```{python}
+#| code-fold: true
+
+f_prime = lambda x: np.exp(x) / (np.exp(x) + 2)
+
+print(f"Valor real f'(0.5): {f_prime(0.5)}")
+print(f"Valor aproximado P'(0.5): {pol_lagrange.deriv()(0.5)}")
+print(f"Error real: {f_prime(0.5) - pol_lagrange.deriv()(0.5)}")
+print(f"Error absoluto: {abs(f_prime(0.5) - pol_lagrange.deriv()(0.5))}")
+print(f"Error relativo: {abs(f_prime(0.5) - pol_lagrange.deriv()(0.5)) / abs(f_prime(0.5))}")
+```
+
+Errores
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+cs_natural = CubicSpline(nodos, values, bc_type='natural')
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, cs_natural(x), color = "#FF5733", label = "$S(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.5, f(0.5), color='green', zorder=5, s=100, label='f(0.5)')
+plt.scatter(0.5, cs_natural(0.5), color='pink', zorder=5, s=100, label='S(0.5)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+```
+
+Valor en $x=0.5$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.5): {f(0.5)}")
+print(f"Valor aproximado S(0.5): {cs_natural(0.5)}")
+print(f"Error real: {f(0.5) - cs_natural(0.5)}")
+print(f"Error absoluto: {abs(f(0.5) - cs_natural(0.5))}")
+print(f"Error relativo: {abs(f(0.5) - cs_natural(0.5)) / abs(f(0.5))}")
+```
+
+Derivada en $x=0.5$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f'(0.5): {f_prime(0.5)}")
+print(f"Valor aproximado S'(0.5): {cs_natural.derivative()(0.5)}")
+print(f"Error real: {f_prime(0.5) - cs_natural.derivative()(0.5)}")
+print(f"Error absoluto: {abs(f_prime(0.5) - cs_natural.derivative()(0.5))}")
+print(f"Error relativo: {abs(f_prime(0.5) - cs_natural.derivative()(0.5)) / abs(f_prime(0.5))}")
+```
+
+Spline condicionado
+
+Derivada:
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f'(0.5): {f_prime(0.5)}")
+print(f"Valor aproximado S'(0.5): {cs_natural.derivative()(0.5)}")
+print(f"Error real: {f_prime(0.5) - cs_natural.derivative()(0.5)}")
+print(f"Error absoluto: {abs(f_prime(0.5) - cs_natural.derivative()(0.5))}")
+print(f"Error relativo: {abs(f_prime(0.5) - cs_natural.derivative()(0.5)) / abs(f_prime(0.5))}")
+```
+
+Errores:
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - cs_condicionado(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Valores en $x=0.5$
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - cs_condicionado(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)), color='brown', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Derivada en $x=0.5$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.5): {f(0.5)}")
+print(f"Valor aproximado S(0.5): {cs_condicionado(0.5)}")
+print(f"Error real: {f(0.5) - cs_condicionado(0.5)}")
+print(f"Error absoluto: {abs(f(0.5) - cs_condicionado(0.5))}")
+print(f"Error relativo: {abs(f(0.5) - cs_condicionado(0.5)) / abs(f(0.5))}")
+```
+
+
+c)  $f(x)=e^{x}+e^{-x}$. Puntos: $x_0=0, x_1=0.5, x_2=1, x_3=1.5, x_4=2$. Aproximar $f(0.75)$ y $f'(0.75)$.
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+f = lambda x: np.exp(x) + np.exp(-x)
+nodos = np.array([0, 0.5, 1, 1.5,2])
+values = f(nodos)
+x = np.linspace(0, 2, 200)
+pol_lagrange = lagrange(nodos, values)
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, pol_lagrange(x), color = "#FF5733", label = "$P(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.75, f(0.75), color='green', zorder=5, s=100, label='f(0.75)')
+plt.scatter(0.75, pol_lagrange(0.75), color='orange', zorder=5, s=100, label='P(0.75)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+
+```
+
+Errores
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - pol_lagrange(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - pol_lagrange(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - pol_lagrange(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Aproximación de $f(0.75)$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.75): {f(0.75)}")
+print(f"Valor aproximado P(0.75): {pol_lagrange(0.75)}")
+print(f"Error real: {f(0.75) - pol_lagrange(0.75)}")
+print(f"Error absoluto: {abs(f(0.75) - pol_lagrange(0.75))}")
+print(f"Error relativo: {abs(f(0.75) - pol_lagrange(0.75)) / abs(f(0.75))}")
+```
+
+Derivada:
+
+```{python}
+#| code-fold: true
+
+f_prime = lambda x: np.exp(x) - np.exp(-x)
+
+print(f"Valor real f'(0.75): {f_prime(0.75)}")
+print(f"Valor aproximado P'(0.75): {pol_lagrange.deriv()(0.75)}")
+print(f"Error real: {f_prime(0.75) - pol_lagrange.deriv()(0.75)}")
+print(f"Error absoluto: {abs(f_prime(0.75) - pol_lagrange.deriv()(0.75))}")
+print(f"Error relativo: {abs(f_prime(0.75) - pol_lagrange.deriv()(0.75)) / abs(f_prime(0.75))}")
+```
+
+Slipe narural 
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+cs_natural = CubicSpline(nodos, values, bc_type='natural')
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, cs_natural(x), color = "#FF5733", label = "$S(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.75, f(0.75), color='green', zorder=5, s=100, label='f(0.75)')
+plt.scatter(0.75, cs_natural(0.75), color='orange', zorder=5, s=100, label='S(0.75)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+```
+
+Errores
+
+```{python}
+#| code-fold: true
+
+f_prime = lambda x: np.exp(x) - np.exp(-x)
+
+print(f"Valor real f'(0.75): {f_prime(0.75)}")
+print(f"Valor aproximado P'(0.75): {pol_lagrange.deriv()(0.75)}")
+print(f"Error real: {f_prime(0.75) - pol_lagrange.deriv()(0.75)}")
+print(f"Error absoluto: {abs(f_prime(0.75) - pol_lagrange.deriv()(0.75))}")
+print(f"Error relativo: {abs(f_prime(0.75) - pol_lagrange.deriv()(0.75)) / abs(f_prime(0.75))}")
+```
+
+Valor en $x=0.75$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.75): {f(0.75)}")
+print(f"Valor aproximado S(0.75): {cs_natural(0.75)}")
+print(f"Error real: {f(0.75) - cs_natural(0.75)}")
+print(f"Error absoluto: {abs(f(0.75) - cs_natural(0.75))}")
+print(f"Error relativo: {abs(f(0.75) - cs_natural(0.75)) / abs(f(0.75))}")
+```
+
+Derivada en $x=0.75$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f'(0.75): {f_prime(0.75)}")
+print(f"Valor aproximado S'(0.75): {cs_natural.derivative()(0.75)}")
+print(f"Error real: {f_prime(0.75) - cs_natural.derivative()(0.75)}")
+print(f"Error absoluto: {abs(f_prime(0.75) - cs_natural.derivative()(0.75))}")
+print(f"Error relativo: {abs(f_prime(0.75) - cs_natural.derivative()(0.75)) / abs(f_prime(0.75))}")
+```
+
+Spline condicionado
+
+Derivada:
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+cs_condicionado = CubicSpline(
+    nodos,
+    values,
+    bc_type=((1, f_prime(0)), (1, f_prime(2)))
+)
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x), color = "#2e86c1", label = "$f(x)$", linewidth = 3)
+plt.plot(x, cs_condicionado(x), color = "#FF5733", label = "$S(x)$")
+plt.scatter(nodos, values, color = "#353a0d", zorder = 5, s = 80, label = "Puntos de Interpolación")
+plt.scatter(0.75, f(0.75), color='green', zorder=5, s=100, label='f(0.75)')
+plt.scatter(0.75, cs_condicionado(0.75), color='orange', zorder=5, s=100, label='S(0.75)')
+plt.grid(alpha = 0.3)
+plt.legend()
+plt.show()
+```
+
+Errores:
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+plt.figure(figsize=(8, 5))
+plt.plot(x, f(x) - cs_condicionado(x), color='red', label='Error Real')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)), color='blue', label='Error Absoluto')
+plt.plot(x, np.abs(f(x) - cs_condicionado(x)) / np.abs(f(x)), color='green', label='Error Relativo')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Valores en $x=0.75$
+
+```{python}
+#| code-fold: true
+
+print(f"Valor real f(0.75): {f(0.75)}")
+print(f"Valor aproximado S(0.75): {cs_condicionado(0.75)}")
+print(f"Error real: {f(0.75) - cs_condicionado(0.75)}")
+print(f"Error absoluto: {abs(f(0.75) - cs_condicionado(0.75))}")
+print(f"Error relativo: {abs(f(0.75) - cs_condicionado(0.75)) / abs(f(0.75))}")
+```
+
+Derivada en $x=0.75$
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+#| warning: false
+
+print(f"Valor real f'(0.75): {f_prime(0.75)}")
+print(f"Valor aproximado S'(0.75): {cs_condicionado.derivative()(0.75)}")
+print(f"Error real: {f_prime(0.75) - cs_condicionado.derivative()(0.75)}")
+print(f"Error absoluto: {abs(f_prime(0.75) - cs_condicionado.derivative()(0.75))}")
+print(f"Error relativo: {abs(f_prime(0.75) - cs_condicionado.derivative()(0.75)) / abs(f_prime(0.75))}")
+```
+
+
+:::
+
+::: {#exr-tarea4_3}
+Considera la siguiente tabla de datos para el agua:
+
+\begin{equation}
+\begin{array}{|l|c|c|c|c|c|} 
+\hline \text{T(°C)} & 50 & 60 & 65 & 75 & 80\\
+ \text{$\rho (kg/m^3)$} & 988 & 985.7 & 980.5 & 974.8 & 971.6  \\
+\hline
+\end{array}
+\end{equation}
+
+Donde $T$ es la temperatura y $\rho$ es la densidad.
+
+a)  Hacer la representación gráfica del spline cúbico y compararlo con el polinomio interpolante $P_4(x)$.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import lagrange, CubicSpline
+
+# Datos
+T = np.array([50, 60, 65, 75, 80])
+rho = np.array([988, 985.7, 980.5, 974.8, 971.6])
+
+# Polinomio interpolante de Lagrange
+P4 = lagrange(T, rho)
+
+# Spline cúbico natural
+cs = CubicSpline(T, rho, bc_type='natural')
+
+# Graficar
+x = np.linspace(50, 80, 400)
+
+plt.figure(figsize=(8,5))
+plt.plot(x, P4(x), label='$P_4(x)$', color='darkorange')
+plt.plot(x, cs(x), label='Spline cúbico', color='steelblue')
+plt.scatter(T, rho, color='black', s=70, zorder=5, label='Datos')
+plt.xlabel('Temperatura (°C)')
+plt.ylabel('Densidad (kg/m³)')
+plt.title('Spline cúbico vs polinomio interpolante')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+b)  Aproximar la densidad para $T=63 °C$ y también la derivada, tanto con el spline cúbico como con el polinomio de Lagrange. Comparar los resultados.
+
+Valor de la densidad en $T=63$
+
+```{python}
+#| code-fold: true
+
+T_eval = 63
+
+rho_lagrange = P4(T_eval)
+rho_spline = cs(T_eval)
+
+print(f"Densidad aproximada con Lagrange en T=63: {rho_lagrange}")
+print(f"Densidad aproximada con spline cúbico en T=63: {rho_spline}")
+```
+
+Aproximación de la derivada en $T=63$
+
+```{python}
+#| code-fold: true
+
+dP4 = P4.deriv()
+dcs = cs.derivative()
+
+deriv_lagrange = dP4(T_eval)
+deriv_spline = dcs(T_eval)
+
+print(f"Derivada aproximada con Lagrange en T=63: {deriv_lagrange}")
+print(f"Derivada aproximada con spline cúbico en T=63: {deriv_spline}")
+```
+
+Comparación gráfica en T = 63
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+x = np.linspace(50, 80, 400)
+
+plt.figure(figsize=(8,5))
+plt.plot(x, P4(x), label='$P_4(x)$', color='darkorange')
+plt.plot(x, cs(x), label='Spline cúbico', color='steelblue')
+plt.scatter(T, rho, color='brown', s=70, zorder=5, label='Datos')
+plt.scatter(T_eval, rho_lagrange, color='pink', s=90, zorder=6, label='Lagrange en T=63')
+plt.scatter(T_eval, rho_spline, color='green', s=90, zorder=6, label='Spline en T=63')
+plt.xlabel('Temperatura (°C)')
+plt.ylabel('Densidad (kg/m³)')
+plt.title('Aproximación de la densidad en T=63°C')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+Tanto el polinomio interpolante como el spline cúbico permiten aproximar la densidad del agua en \(T=63^\circ C). Sin embargo el spline cúbico suele producir una aproximación más suave y estable.Por lo tanto en este caso el más conveniente es el spline cúbico
+
+:::
+
+::: {#exr-tarea4_4}
+Llevar a cabo lo siguiente:
+
+i.  Fija la semilla del generador de números pseudoaleatorios con `np.random.seed(z)`, donde $z$ es un entero de tu elección (por ejemplo, tu número de cuenta).
+
+```{python}
+#| code-fold: true
+
+# Semilla
+np.random.seed(10)
+x= np.arange(0,11)
+y = np.random.choice(np.arange(-25, 26), size=len(x), replace=True)
+
+print("x =", x)
+print("y =", y)
+```
+
+ii. Genera una sucesión desde 0 hasta 10 con la función `np.arange` y asígnalo a la variable $x$.
+
+```{python}
+#| code-fold: true
+
+n = len(x) - 1
+h = np.diff(x)
+
+# Matriz del sistema
+A = np.zeros((n+1, n+1))
+rhs = np.zeros(n+1)
+
+# Condiciones naturales
+A[0, 0] = 1
+A[n, n] = 1
+
+# Ecuaciones interiores
+for i in range(1, n):
+    A[i, i-1] = h[i-1]
+    A[i, i]   = 2 * (h[i-1] + h[i])
+    A[i, i+1] = h[i]
+    rhs[i] = 3 * ((y[i+1] - y[i]) / h[i] - (y[i] - y[i-1]) / h[i-1])
+
+# Resolver sistema
+c = np.linalg.solve(A, rhs)
+
+print("Matriz A:")
+print(A)
+print("\nVector rhs:")
+print(rhs)
+print("\nCoeficientes c:")
+print(c)
+```
+
+iii. Del conjunto $\{-25, -24, \dots, 24, 25\}\subset\mathbb{Z}$ toma una muestra con reemplazo que tenga la misma cantidad de elementos de $x$ y asígnalo a la variable $y$ (utilizar la función `np.random.choice`).
+
+```{python}
+#| code-fold: true
+
+a = y[:-1]
+b = np.zeros(n)
+d = np.zeros(n)
+
+for j in range(n):
+    b[j] = (y[j+1] - y[j]) / h[j] - h[j] * (2*c[j] + c[j+1]) / 3
+    d[j] = (c[j+1] - c[j]) / (3*h[j])
+
+print("Coeficientes a:")
+print(a)
+print("\nCoeficientes b:")
+print(b)
+print("\nCoeficientes c por tramo:")
+print(c[:-1])
+print("\nCoeficientes d:")
+print(d)
+```
+
+iv. Construye manualmente el sistema tridiagonal para los coeficientes $c_j$ del spline cúbico natural, resuélvelo con `numpy` y determina los coeficientes $a_j$, $b_j$ y $d_j$ de cada pieza.
+
+```{python}
+#| code-fold: true
+
+def spline_manual(x_eval, x, a, b, c, d):
+    x_eval = np.atleast_1d(x_eval)
+    y_eval = np.zeros_like(x_eval, dtype=float)
+    
+    for k, xv in enumerate(x_eval):
+        # Encontrar el intervalo correcto
+        if xv == x[-1]:
+            j = len(x) - 2
+        else:
+            j = np.searchsorted(x, xv) - 1
+            j = max(0, min(j, len(x)-2))
+        
+        dx = xv - x[j]
+        y_eval[k] = a[j] + b[j]*dx + c[j]*dx**2 + d[j]*dx**3
+    
+    return y_eval
+```
+
+v.  Verifica tu resultado comparándolo con el spline obtenido mediante `CubicSpline` de SciPy.
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+cs = CubicSpline(x, y, bc_type='natural')
+
+x_plot = np.linspace(x[0], x[-1], 500)
+y_manual = spline_manual(x_plot, x, a, b, c[:-1], d)
+y_scipy = cs(x_plot)
+
+plt.figure(figsize=(10,6))
+plt.plot(x_plot, y_manual, label="Spline manual", color="darkorange", linewidth=2)
+plt.plot(x_plot, y_scipy, label="CubicSpline (SciPy)", color="steelblue", linestyle="--", linewidth=2)
+plt.scatter(x, y, color="black", zorder=5, s=60, label="Datos")
+plt.title("Comparación del spline cúbico natural")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.grid(alpha=0.3)
+plt.legend()
+plt.show()
+```
+
+```{python}
+#| code-fold: true
+
+error_max = np.max(np.abs(y_manual - y_scipy))
+print(f"Error máximo entre spline manual y CubicSpline: {error_max}")
+```
+
+Al comparar los resultados, se observa que ambas construcciones coinciden prácticamente. Por lo tanto, el procedimiento fue correcto.
+
+:::
+
+::: {#exr-tarea4_5}
+Construye los splines cúbicos condicionados en $n+1$ nodos, donde $n= 4,5, 9, 19$ para las siguientes funciones en el intervalo dado (utilizar `plotly` para las gráficas). Con el de $n=19$ nodos grafica los errores real, absoluto y relativo.
+
+```{python}
+#| code-fold: true
+
+def graficar_splines_condicionados(f, f_prime, a, b, titulo):
+    n_values = [4, 5, 9, 19]
+    x_plot = np.linspace(a, b, 500)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=f(x_plot),
+        mode='lines',
+        name='f(x)'
+    ))
+
+    splines = {}
+
+    for n in n_values:
+        nodos = np.linspace(a, b, n+1)
+        values = f(nodos)
+
+        spline = CubicSpline(
+            nodos,
+            values,
+            bc_type=((1, f_prime(a)), (1, f_prime(b)))
+        )
+
+        splines[n] = spline
+
+        fig.add_trace(go.Scatter(
+            x=x_plot,
+            y=spline(x_plot),
+            mode='lines',
+            name=f'Spline condicionado n={n}'
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=nodos,
+            y=values,
+            mode='markers',
+            name=f'Nodos n={n}'
+        ))
+
+    fig.update_layout(
+        title=titulo,
+        xaxis_title='x',
+        yaxis_title='y',
+        hovermode='x unified'
+    )
+
+    fig.update_xaxes(rangeslider_visible=True)
+    fig.show()
+
+    return splines
+```
+
+
+```{python}
+#| code-fold: true
+
+def graficar_errores(f, spline, a, b, titulo):
+    x_plot = np.linspace(a, b, 500)
+    fx = f(x_plot)
+    sx = spline(x_plot)
+
+    error_real = fx - sx
+    error_abs = np.abs(error_real)
+    error_rel = error_abs / np.abs(fx)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=error_real,
+        mode='lines',
+        name='Error real'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=error_abs,
+        mode='lines',
+        name='Error absoluto'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=error_rel,
+        mode='lines',
+        name='Error relativo'
+    ))
+
+    fig.update_layout(
+        title=titulo,
+        xaxis_title='x',
+        yaxis_title='Error',
+        hovermode='x unified'
+    )
+
+    fig.update_xaxes(rangeslider_visible=True)
+    fig.show()
+```
+
+
+a)  $f(x) = e^{-x} sen\,(\pi x)$, $x\in [0,2]$.
+
+Derivada $f´(x)= e^-x(picos(pix)-sin(pix))$
+
+```{python}
+#| code-fold: true
+
+f = lambda x: np.exp(-x) * np.sin(np.pi*x)
+f_prime = lambda x: np.exp(-x) * (np.pi*np.cos(np.pi*x) - np.sin(np.pi*x))
+
+splines_a = graficar_splines_condicionados(
+    f, f_prime, 0, 2,
+    "Splines cúbicos condicionados para f(x)=e^{-x}sen(πx)"
+)
+
+graficar_errores(
+    f, splines_a[19], 0, 2,
+    "Errores del spline condicionado con n=19 para f(x)=e^{-x}sen(πx)"
+)
+```
+
+b)  $f(x) = x^2\, \log(1+x)$, $x\in [0,3]$.
+
+Derivada:
+$f´(x) = 2x*log(1+x) + (x^2/(1+x))$
+
+```{python}
+#| code-fold: true
+
+f = lambda x: x**2 * np.log(1+x)
+f_prime = lambda x: 2*x*np.log(1+x) + x**2/(1+x)
+
+splines_b = graficar_splines_condicionados(
+    f, f_prime, 0, 3,
+    "Splines cúbicos condicionados para f(x)=x^2 log(1+x)"
+)
+
+graficar_errores(
+    f, splines_b[19], 0, 3,
+    "Errores del spline condicionado con n=19 para f(x)=x^2 log(1+x)"
+)
+```
+
+
+c)  $f(x) = cosh(x) sen(x)$, $x\in[0,\pi]$.
+
+Derivada:
+$f´(x) = sinh(x)sin(x) + cosh(x)cos(x)$
+
+```{python}
+#| code-fold: true
+
+f = lambda x: np.cosh(x) * np.sin(x)
+f_prime = lambda x: np.sinh(x)*np.sin(x) + np.cosh(x)*np.cos(x)
+
+splines_c = graficar_splines_condicionados(
+    f, f_prime, 0, np.pi,
+    "Splines cúbicos condicionados para f(x)=cosh(x)sen(x)"
+)
+
+graficar_errores(
+    f, splines_c[19], 0, np.pi,
+    "Errores del spline condicionado con n=19 para f(x)=cosh(x)sen(x)"
+)
+```
+
+d)  $f(x) = log(x) cos(x)$, $x\in [1,4]$.
+
+Derivada:
+$f´(x)= (cos(x)/x) - log(x)sin(x)$
+
+```{python}
+#| code-fold: true
+
+f = lambda x: np.log(x) * np.cos(x)
+f_prime = lambda x: np.cos(x)/x - np.log(x)*np.sin(x)
+
+splines_d = graficar_splines_condicionados(
+    f, f_prime, 1, 4,
+    "Splines cúbicos condicionados para f(x)=log(x)cos(x)"
+)
+
+graficar_errores(
+    f, splines_d[19], 1, 4,
+    "Errores del spline condicionado con n=19 para f(x)=log(x)cos(x)"
+)
+```
+
+:::
+
+::: {#exr-tarea4_6}
+
+Una variable aleatoria continua $X$ sigue una distribución ji-cuadrada con $k$ grados de libertad, lo que se denota como $X \sim \chi^2(k)$, si su función de densidad de probabilidad es:
+
+\begin{equation}
+f(x) = \frac{1}{2^{k/2} \Gamma(k/2)} x^{k/2-1} e^{-x/2}, 
+\end{equation}
+
+para $x > 0$ y $k > 0$. Aquí $\Gamma$ es la función gamma, que generaliza el factorial a los números reales.
+
+El único parámetro de esta distribución es $k$, que representa los grados de libertad que, aunque puede ser cualquier número real positivo, regularmente son enteros positivos. La función de densidad de probabilidad de la distribución ji-cuadrada es asimétrica y se utiliza comúnmente en pruebas de hipótesis y análisis de varianza.
+
+Los grados de libertad representan **el número de variables independientes** que se suman para formar la variable aleatoria $X$. Específicamente:
+
+Si $Z_1, Z_2, \ldots, Z_k$ son $k$ variables aleatorias independientes que siguen una distribución normal estándar (es decir, $Z_i \sim N(0, 1)$ para $i = 1, 2, \ldots, k$), entonces la variable aleatoria $X$ definida como:
+
+\begin{equation}
+X = Z_1^2 + Z_2^2 + \ldots + Z_k^2\sim \chi^2(k)
+\end{equation}
+
+A continuación se muestra la función de densidad de probabilidad de la distribución ji-cuadrada para diferentes valores de $k$.
+
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+dfs = [3, 5, 7, 8, 12, 15]
+
+x = np.linspace(0, 30, 1000)
+plt.figure(figsize=(10, 6))
+for df in dfs:
+    plt.plot(x, chi2.pdf(x, df), label=f'k={df}')
+plt.title('Función de Densidad de Probabilidad de la Distribución Ji-Cuadrada')
+plt.xlabel('x')
+plt.ylabel('f(x)')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.show()
+```
+
+Elige un valor de $k\geq 3$ y construye los splines cúbicos naturales para la función de densidad de probabilidad de la distribución ji-cuadrada con ese valor de $k$ en el intervalo $[0, 30]$ utilizando $n+1$ nodos equiespaciados para $n= 5, 7, 10, 15, 20$. Grafica (con `plotly`) cada spline junto con la función de densidad de probabilidad original. Grafica el error real, el absoluto y el relativo para cada spline (también con `plotly`).
+
+Tomamos $k=8$ 
+
+**Nota.** Escoger un $k$ diferente. En este caso se escogió $k=10$ para que la función de densidad de probabilidad tenga una forma más interesante, pero puedes elegir otro valor de $k$ y repetir el proceso. Se calculó cada spline por separado para cada valor de $n$, aunque utilizar un ciclo para calcular cada spline automáticamente también es una opción, se decicidió calcular cada spline por separado para graficar posteriormente los errores de cada spline.
+
+
+```{python}
+#| code-fold: true
+#| fig-align: "center"
+
+k = 8
+
+x = np.linspace(0, 30, 1000)
+
+x_values = np.linspace(0, 30, 6)
+y_values = chi2.pdf(x_values, k)
+cs_chi2_5 = CubicSpline(x_values, y_values, bc_type= 'natural')
+
+x_values = np.linspace(0, 30, 8)
+y_values = chi2.pdf(x_values, k)
+cs_chi2_7 = CubicSpline(x_values, y_values, bc_type= 'natural')
+
+x_values = np.linspace(0, 30, 11)
+y_values = chi2.pdf(x_values, k)
+cs_chi2_10 = CubicSpline(x_values, y_values, bc_type= 'natural')
+
+x_values = np.linspace(0, 30, 16)
+y_values = chi2.pdf(x_values, k)
+cs_chi2_15 = CubicSpline(x_values, y_values, bc_type= 'natural')
+
+x_values = np.linspace(0, 30, 21)
+y_values = chi2.pdf(x_values, k)
+cs_chi2_20 = CubicSpline(x_values, y_values, bc_type= 'natural')
+
+
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x= x, y= chi2.pdf(x, k), mode = 'lines', name = "f(x)", line = dict(color = "#a94d4d", width=2)))
+fig.add_trace(go.Scatter(x= x, y= cs_chi2_5(x), mode = 'lines', name = "S5", line = dict(color = "#a4dd1e", width=2)))
+fig.add_trace(go.Scatter(x= x, y= cs_chi2_7(x), mode = 'lines', name = "S7", line = dict(color = "#46844b", width=2)))
+fig.add_trace(go.Scatter(x= x, y= cs_chi2_10(x), mode = 'lines', name = "S10", line = dict(color = "#cfad40", width=2)))
+fig.add_trace(go.Scatter(x= x, y= cs_chi2_15(x), mode = 'lines', name = "S15",  line = dict(color = "#e03cd0", width=2)))
+fig.add_trace(go.Scatter(x= x, y= cs_chi2_20(x), mode = 'lines', name = "S20", line = dict(color = "#7a4da9", width=2)))
+fig.update_layout(xaxis_title = "x", yaxis_title = "Densidad de Probabilidad", template = 'plotly_white')
+
+fig.show()
+
+
+```
+
+
+
+**Errores**
+::: {.panel-tabset}
+
+## S5
+
+```{python}
+#| code-fold: true
+
+x = np.linspace(5, 30, 1000)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x= x, y= chi2.pdf(x, k) - cs_chi2_5(x), mode = 'lines', name = "Error real", line = dict(color = "#a94d4d", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_5(x)), mode = 'lines', name = "Error absoluto", line = dict(color = "#34dc45", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_5(x))/ np.abs(chi2.pdf(x, k)), mode = 'lines', name = "Error relativo", line = dict(color = "#2a20bb", width=3)))
+fig.update_layout(xaxis_title = "x", yaxis_title = "Error", template = 'plotly_white')
+
+fig.show()
+```
+
+
+## S7
+
+```{python}
+#| code-fold: true
+
+
+x = np.linspace(3, 30, 1000)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x= x, y= chi2.pdf(x, k) - cs_chi2_7(x), mode = 'lines', name = "Error real", line = dict(color = "#a94d4d", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_7(x)), mode = 'lines', name = "Error absoluto", line = dict(color = "#34dc45", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_7(x))/ np.abs(chi2.pdf(x, k)), mode = 'lines', name = "Error relativo", line = dict(color = "#2a20bb", width=3)))
+fig.update_layout(xaxis_title = "x", yaxis_title = "Error", template = 'plotly_white')
+
+fig.show()
+```
+
+## S10
+
+```{python}
+#| code-fold: true
+
+
+x = np.linspace(3, 30, 1000)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x= x, y= chi2.pdf(x, k) - cs_chi2_10(x), mode = 'lines', name = "Error real", line = dict(color = "#a94d4d", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_10(x)), mode = 'lines', name = "Error absoluto", line = dict(color = "#34dc45", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_10(x))/ np.abs(chi2.pdf(x, k)), mode = 'lines', name = "Error relativo", line = dict(color = "#2a20bb", width=3)))
+fig.update_layout(xaxis_title = "x", yaxis_title = "Error", template = 'plotly_white')
+
+fig.show()
+```
+
+
+## S15
+
+```{python}
+#| code-fold: true
+
+
+x = np.linspace(3, 30, 1000)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x= x, y= chi2.pdf(x, k) - cs_chi2_15(x), mode = 'lines', name = "Error real", line = dict(color = "#a94d4d", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_15(x)), mode = 'lines', name = "Error absoluto", line = dict(color = "#34dc45", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_15(x))/ np.abs(chi2.pdf(x, k)), mode = 'lines', name = "Error relativo", line = dict(color = "#2a20bb", width=3)))
+fig.update_layout(xaxis_title = "x", yaxis_title = "Error", template = 'plotly_white')
+
+fig.show()
+```
+
+
+## S20
+
+
+```{python}
+#| code-fold: true
+
+
+x = np.linspace(3, 30, 1000)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x= x, y= chi2.pdf(x, k) - cs_chi2_20(x), mode = 'lines', name = "Error real", line = dict(color = "#a94d4d", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_20(x)), mode = 'lines', name = "Error absoluto", line = dict(color = "#34dc45", width=3)))
+fig.add_trace(go.Scatter(x= x, y= np.abs(chi2.pdf(x, k) - cs_chi2_20(x))/ np.abs(chi2.pdf(x, k)), mode = 'lines', name = "Error relativo", line = dict(color = "#2a20bb", width=3)))
+fig.update_layout(xaxis_title = "x", yaxis_title = "Error", template = 'plotly_white')
+
+fig.show()
+```
+
+
+:::
+
+:::
+
+::: {#exr-tarea4_7}
+
+Selecciona dos indicadores económicos proporcionados por el Inegi que sean de tu interés. Elige un periodo de dos años y construye los splines cúbicos naturales para cada indicador. Brinda una interpretación de los resultados obtenidos.
+
+Se van a seleccionar dos indicadores económicos del ingei: IGAE e INPC
+
+```{python}
+import pandas as pd
+import numpy as np
+from scipy.interpolate import CubicSpline
+import plotly.graph_objects as go
+
+data_inegi = pd.read_excel("TIE_Inegi_long.xlsx")
+```
+
+```{python}
+print(data_inegi.columns.tolist())
+```
+
+Indicador IGAE
+
+```{python}
+df_igae = data_inegi[["Fecha", "Actividad_economica"]].dropna()
+df_igae["Fecha"] = pd.to_datetime(df_igae["Fecha"])
+
+print(df_igae.head())
+print(df_igae.info())
+```
+
+```{python}
+df_igae_2y = df_igae[(df_igae["Fecha"] >= "2022-01-01") & (df_igae["Fecha"] <= "2023-12-31")]
+
+print(df_igae_2y.head())
+```
+
+Spline cúbico del IGAE
+
+```{python}
+x = np.arange(len(df_igae_2y))
+y = df_igae_2y["Actividad_economica"].values
+
+cs_igae = CubicSpline(x, y, bc_type='natural')
+
+x_fino = np.linspace(x.min(), x.max(), 500)
+y_spline = cs_igae(x_fino)
+
+fechas_interp = pd.date_range(
+    start=df_igae_2y["Fecha"].min(),
+    end=df_igae_2y["Fecha"].max(),
+    periods=500
+)
+```
+
+Grafica IGAE 
+
+```{python}
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=df_igae_2y["Fecha"],
+    y=y,
+    mode='markers',
+    name='Datos reales'
+))
+
+fig.add_trace(go.Scatter(
+    x=fechas_interp,
+    y=y_spline,
+    mode='lines',
+    name='Spline cúbico natural'
+))
+
+fig.update_layout(
+    title="Spline cúbico natural del IGAE",
+    xaxis_title="Fecha",
+    yaxis_title="IGAE",
+    template='plotly_white'
+)
+
+fig.update_xaxes(rangeslider_visible=True)
+fig.show()
+```
+
+**INPD**
+
+```{python}
+df_inpc = data_inegi[["Fecha", "Precios_consumidor"]].dropna()
+df_inpc["Fecha"] = pd.to_datetime(df_inpc["Fecha"])
+
+print(df_inpc.head())
+print(df_inpc.info())
+```
+
+Filtrar mismo periodo de dos años
+
+```{python}
+df_inpc_2y = df_inpc[(df_inpc["Fecha"] >= "2022-01-01") & (df_inpc["Fecha"] <= "2023-12-31")]
+
+print(df_inpc_2y.head())
+```
+
+Spline cúbico 
+
+```{python}
+x = np.arange(len(df_inpc_2y))
+y = df_inpc_2y["Precios_consumidor"].values
+
+cs_inpc = CubicSpline(x, y, bc_type='natural')
+
+x_fino = np.linspace(x.min(), x.max(), 500)
+y_spline = cs_inpc(x_fino)
+
+fechas_interp = pd.date_range(
+    start=df_inpc_2y["Fecha"].min(),
+    end=df_inpc_2y["Fecha"].max(),
+    periods=500
+)
+```
+
+Grafica del INPC
+
+```{python}
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=df_igae_2y["Fecha"],
+    y=y,
+    mode='markers',
+    name='Datos reales'
+))
+
+fig.add_trace(go.Scatter(
+    x=fechas_interp,
+    y=y_spline,
+    mode='lines',
+    name='Spline cúbico natural'
+))
+
+fig.update_layout(
+    title="Spline cúbico natural del INPC",
+    xaxis_title="Fecha",
+    yaxis_title="INPC",
+    template='plotly_white'
+)
+
+fig.update_xaxes(rangeslider_visible=True)
+fig.show()
+```
+
+
+**Interpretación**
+En el caso de IGAE, el spline cúbico permite observar con una mayor claridad la evolución de la actividad económica durante el periodo analizado. Mientras que en el INPC podemos obersvar un comportamiento más creciente, relacionado con el aumenyo de los precios al consumidor. 
+
+:::
+
+
+::: {#exr-tarea4_8}
+
+Selecciona los precios de cierre de dos acciones, descarga los datos mensuales utilizando `yfinance` y construye los splines cúbicos naturales para cada acción para un periodo de dos años. Brinda una interpretación de los resultados obtenidos.
+
+```{python}
+
+import yfinance as yf
+import pandas as pd
+import numpy as np 
+from scipy.interpolate import CubicSpline
+import plotly.graph_objects as go
+
+```
+
+```{python}
+
+tickers = ["SBUX", "NFLX"]
+
+df_acciones = yf.download(
+    tickers, 
+    start="2022-01-01", end="2023-12-31", 
+    interval="1mo"
+)["Close"]
+```
+
+**Starbucks**
+Preparar datos:
+
+```{python}
+df_sbux = df_acciones[["SBUX"]].dropna().reset_index()
+df_sbux["Date"] = pd.to_datetime(df_sbux["Date"])
+
+x_sbux = np.arange(len(df_sbux))
+y_sbux = df_sbux["SBUX"].values
+```
+
+Spline:
+
+```{python}
+x_sbux = np.arange(len(df_sbux))
+y_sbux = df_sbux["SBUX"].values
+
+cs_sbux = CubicSpline(x_sbux, y_sbux, bc_type='natural')
+
+x_fino_sbux = np.linspace(x_sbux.min(), x_sbux.max(), 500)
+y_spline_sbux = cs_sbux(x_fino_sbux)
+
+fechas_interp_sbux = pd.date_range(
+    start=df_sbux["Date"].min(),
+    end=df_sbux["Date"].max(),
+    periods=500
+)
+```
+
+Gráfica
+
+```{python}
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=df_sbux["Date"],
+    y=y_sbux,
+    mode='markers',
+    name='Datos reales SBUX'
+))
+
+fig.add_trace(go.Scatter(
+    x=fechas_interp_sbux,
+    y=y_spline_sbux,
+    mode='lines',
+    name='Spline cúbico SBUX'
+))
+
+fig.update_layout(
+    title="Spline cúbico natural de SBUX",
+    xaxis_title="Fecha",
+    yaxis_title="Precio de cierre (USD)",
+    template='plotly_white'
+)
+
+fig.update_xaxes(rangeslider_visible=True)
+fig.show()
+```
+
+**NETFLIX**
+Preparar datos:
+
+```{python}
+df_nflx = df_acciones[["NFLX"]].dropna().reset_index()
+df_nflx["Date"] = pd.to_datetime(df_nflx["Date"])
+
+x_nflx = np.arange(len(df_nflx))
+y_nflx = df_nflx["NFLX"].values
+```
+
+Spline:
+
+```{python}
+cs_nflx = CubicSpline(x_nflx, y_nflx, bc_type='natural')
+
+x_fino_nflx = np.linspace(x_nflx.min(), x_nflx.max(), 500)
+y_spline_nflx = cs_nflx(x_fino_nflx)
+
+fechas_interp_nflx = pd.date_range(
+    start=df_nflx["Date"].min(),
+    end=df_nflx["Date"].max(),
+    periods=500
+)
+```
+
+Gráfica
+
+```{python}
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=df_nflx["Date"],
+    y=y_nflx,
+    mode='markers',
+    name='Datos reales NFLX'
+))
+
+fig.add_trace(go.Scatter(
+    x=fechas_interp_nflx,
+    y=y_spline_nflx,
+    mode='lines',
+    name='Spline cúbico NFLX'
+))
+
+fig.update_layout(
+    title="Spline cúbico natural de NFLX",
+    xaxis_title="Fecha",
+    yaxis_title="Precio de cierre (USD)",
+    template='plotly_white'
+)
+
+fig.update_xaxes(rangeslider_visible=True)
+fig.show()
+```
+
+
+**Interpretación**
+En ambos casos, se observa que el spline cúbico natural sigue muy de cercas el comportamiento de los datos originales. Las gráficas se ven muy parecidas entre sí y es porque el número de datos no es muy grande, provocando que el spline suavizará la conexión entre los puntos. En general no hay cambios tran bruscos, dandonos a entender el comportamiento mensual de las acciones 
+
+
+:::
